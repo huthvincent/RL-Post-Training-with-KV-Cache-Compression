@@ -27,25 +27,25 @@
 ┌─────────────────────────────────────────────────────────┐
 │                   SMD Training Loop                     │
 │                                                         │
-│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │ Rollout  │───▶│ Shadow Mask  │───▶│   Learner    │  │
-│  │ (SGLang) │    │ Interceptor  │    │  (Megatron)  │  │
-│  └──────────┘    └──────────────┘    └──────┬───────┘  │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐   │
+│  │ Rollout  │───▶│ Shadow Mask  │───▶│   Learner    │   │
+│  │ (SGLang) │    │ Interceptor  │    │  (Megatron)  │   │
+│  └──────────┘    └──────────────┘    └──────┬───────┘   │
 │       │              Generates                │         │
-│       │           shadow_masks          ┌─────┴─────┐  │
-│       │              (T×T)              │ Dual-Track │  │
-│       │                                 │    Loss    │  │
-│       │                                 ├───────────┤  │
-│       │                                 │ Track 1:  │  │
-│       │                                 │ Shadow PG │  │
-│       │                                 │ (on-policy│  │
-│       │                                 │ faithful) │  │
-│       │                                 ├───────────┤  │
-│       │                                 │ Track 2:  │  │
-│       │                                 │ KL Distill│  │
-│       │                                 │ (dense →  │  │
-│       │                                 │  sparse)  │  │
-│       │                                 └───────────┘  │
+│       │           shadow_masks          ┌─────┴─────┐   │
+│       │              (T×T)              │ Dual-Track│   │
+│       │                                 │    Loss   │   │
+│       │                                 ├───────────┤   │
+│       │                                 │ Track 1:  │   │
+│       │                                 │ Shadow PG │   │
+│       │                                 │ (on-policy│   │
+│       │                                 │ faithful) │   │
+│       │                                 ├───────────┤   │
+│       │                                 │ Track 2:  │   │
+│       │                                 │ KL Distill│   │
+│       │                                 │ (dense →  │   │
+│       │                                 │  sparse)  │   │
+│       │                                 └───────────┘   │
 └─────────────────────────────────────────────────────────┘
 
 Total Loss = GRPO(π_shadow) + λ · D_KL(π_dense ‖ sg(π_shadow))
