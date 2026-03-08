@@ -57,41 +57,110 @@ Total Loss = GRPO(π_shadow) + λ · D_KL(π_dense ‖ sg(π_shadow))
 
 ---
 
-## Installation
+## Environment Setup
+
+SMD is built on top of a distributed RL training stack. All experiments run inside a **Docker container** with the following pre-installed software.
+
+### Software Stack (Tested Versions)
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Ubuntu | 24.04 LTS | Base OS |
+| Python | 3.12 | Runtime |
+| PyTorch | 2.9.1+cu129 | Deep learning framework |
+| CUDA | 12.9 | GPU acceleration |
+| [Slime (veRL)](https://github.com/volcengine/verl) | 0.2.2 | RLHF training orchestration |
+| [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) | 0.16.0rc0 (core) | Distributed model parallelism |
+| [SGLang](https://github.com/sgl-project/sglang) | 0.5.9 | High-performance rollout engine |
+| [Ray](https://github.com/ray-project/ray) | 2.54.0 | Distributed task scheduling |
+| HuggingFace Transformers | 4.57.1 | Model loading & tokenization |
+
+### Step 1: Set Up the Docker Container
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/RLKV.git
-cd RLKV/SMD
-pip install -r requirements.txt
+# Start from an NVIDIA PyTorch base image
+docker run --gpus all --shm-size=64g --name smd_training \
+  -v /path/to/your/workspace:/workspace \
+  -it nvcr.io/nvidia/pytorch:25.02-py3
+
+# Inside the container, install the required frameworks:
+
+# 1. Install Megatron-LM
+git clone https://github.com/NVIDIA/Megatron-LM.git /root/Megatron-LM
+cd /root/Megatron-LM && pip install -e .
+export PYTHONPATH=/root/Megatron-LM:$PYTHONPATH
+
+# 2. Install Slime (veRL fork with GRPO support)
+git clone https://github.com/volcengine/verl.git /root/slime
+cd /root/slime && pip install -e .
+
+# 3. Install SGLang (for rollout inference)
+pip install sglang[all]
+
+# 4. Install Ray
+pip install ray[default]
+
+# 5. Install other dependencies
+pip install rouge-score transformers accelerate
 ```
 
-### Prerequisites
-- Python ≥ 3.10
-- PyTorch ≥ 2.1 with CUDA support
-- HuggingFace `transformers` ≥ 4.36
-- [Slime](https://github.com/volcengine/verl) (for full training pipeline)
-- [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) (for distributed training)
+> **Note:** The exact Docker setup may require additional configuration depending on your GPU driver version and CUDA compatibility. We recommend starting from `nvcr.io/nvidia/pytorch:25.02-py3` which includes PyTorch + CUDA pre-configured.
+
+### Step 2: Prepare Model Weights
+
+```bash
+# Download the base model (example: Qwen2.5-1.5B-Instruct)
+mkdir -p shared_resources/models
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct \
+  --local-dir shared_resources/models/Qwen2.5-1.5B-Instruct
+
+# Convert to Megatron torch_dist format (required for distributed training)
+python /root/slime/tools/convert_hf_to_torch_dist.py \
+  --hf-checkpoint shared_resources/models/Qwen2.5-1.5B-Instruct \
+  --save-path shared_resources/models/Qwen2.5-1.5B-Instruct_torch_dist
+```
+
+### Step 3: Prepare Datasets
+
+```bash
+mkdir -p shared_resources/datasets
+
+# For TL;DR summarization (ROUGE reward)
+# Format: JSONL with "prompt" and "label" fields
+# Source: https://huggingface.co/datasets/CarperAI/openai_summarize_tldr
+
+# For GSM8K math reasoning (Math accuracy reward)
+# Format: JSONL with "prompt" and "label" fields
+# Source: https://huggingface.co/datasets/openai/gsm8k
+```
+
+### Hardware Requirements
+
+| Model Size | Min GPU VRAM | Recommended GPU |
+|-----------|-------------|-----------------|
+| 1.5B | 40 GB | NVIDIA A100 / H100 |
+| 7B | 80 GB | NVIDIA H100 / H200 |
+| 14B | 2 × 80 GB | 2 × H100 (TP=2) |
 
 ---
 
 ## Quick Start
 
-### 1. Run SMD Training (Reddit TL;DR)
-
 ```bash
-bash scripts/run_smd_tldr.sh
+# Run all 7 experiments (see experiments/README_EXPERIMENTS.md for details)
+bash experiments/exp_02_sota_showdown/run_exp.sh
+
+# Or run the micro sanity check first (10 rollouts, ~2 min per test)
+bash experiments/run_micro_sanity_check.sh
 ```
 
-### 2. Run Dense Baseline
+Each experiment script has a **Configuration** section at the top — just change `MODEL_SIZE` and `MODEL_PATH` to scale up:
 
 ```bash
-bash scripts/run_baseline.sh
-```
-
-### 3. Compare with Sparse-RL
-
-```bash
-bash scripts/run_sparse_rl.sh
+# ── Configuration (Modify here for scale-up) ───────────────
+MODEL_SIZE="1.5B"        # ← Change to "7B" or "14B"
+MODEL_PATH="..."         # ← Point to your model weights
+CONTAINER="smd_training" # ← Your Docker container name
 ```
 
 ---
