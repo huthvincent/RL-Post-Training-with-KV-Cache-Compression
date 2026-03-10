@@ -2,8 +2,9 @@
 # RLKV Monorepo .gitignore
 # ====================
 
-# Large files & shared resources (NEVER upload)
-shared_resources/
+# Large files & shared resources — track structure, ignore data
+shared_resources/datasets/**/*.jsonl
+shared_resources/models/*/
 
 # Python
 __pycache__/

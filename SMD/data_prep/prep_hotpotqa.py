@@ -9,7 +9,10 @@ import json
 import os
 from datasets import load_dataset
 
-OUTPUT_DIR = "/home/zhu11/RLKV/manifold/data/hotpot_qa"
+OUTPUT_DIR = os.environ.get(
+    "SMD_DATA_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "..", "shared_resources", "datasets", "hotpot_qa"),
+)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 print("Downloading HotpotQA (distractor) dataset...")

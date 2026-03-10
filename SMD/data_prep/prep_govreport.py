@@ -9,7 +9,10 @@ import json
 import os
 from datasets import load_dataset
 
-OUTPUT_DIR = "/home/zhu11/RLKV/manifold/data/gov_report"
+OUTPUT_DIR = os.environ.get(
+    "SMD_DATA_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "..", "shared_resources", "datasets", "gov_report"),
+)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 print("Downloading GovReport dataset...")
