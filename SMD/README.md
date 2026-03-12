@@ -138,6 +138,7 @@ mkdir -p shared_resources/datasets
 
 | Model Size | Min GPU VRAM | Recommended GPU |
 |-----------|-------------|-----------------|
+| 0.6B | 16 GB | NVIDIA A100 / H100 |
 | 1.5B | 40 GB | NVIDIA A100 / H100 |
 | 7B | 80 GB | NVIDIA H100 / H200 |
 | 14B | 2 × 80 GB | 2 × H100 (TP=2) |

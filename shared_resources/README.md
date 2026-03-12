@@ -39,6 +39,8 @@ Models are downloaded via `huggingface-cli download` and converted to `torch_dis
 
 ```
 shared_resources/models/
+├── Qwen3-0.6B/
+├── Qwen3-0.6B_torch_dist/
 ├── Qwen3-1.7B/
 ├── Qwen3-1.7B_torch_dist/
 ├── Qwen3-4B-Instruct-2507/
