@@ -23,37 +23,57 @@
 
 ## Method Overview
 
+### The Problem: Off-Policy Mismatch
+
+> Standard RL training generates rollouts with **full KV cache** (π_dense), then trains on those rollouts.  
+> If you compress the KV cache during rollout (π_sparse), the gradient signal becomes **incoherent** — the learner optimizes for a policy it never actually executed. Result: **zero reward**.
+
+### The Solution: Shadow Mask Distillation
+
+SMD introduces a **simulation-based** approach: instead of physically evicting KV entries, it *simulates* compression by computing a **shadow mask** and applying a dual-track loss.
+
+```mermaid
+flowchart LR
+    subgraph ROLLOUT ["🎲 Rollout (SGLang)"]
+        A["Prompt"] --> B["Generate Response\n(full KV cache)"]
+        B --> C["Compute Reward\n(ROUGE / Math / EM)"]
+    end
+
+    subgraph INTERCEPT ["🎭 Shadow Mask Interceptor"]
+        B --> D["Attention Scores"]
+        D --> E["Token Selection\n(SnapKV / Random / Recent)"]
+        E --> F["Shadow Mask M\n(binary T×T matrix)"]
+    end
+
+    subgraph LEARNER ["🧠 Learner (Megatron-LM)"]
+        direction TB
+        F --> G
+        C --> G
+        G["Dual-Track Loss"]
+        G --> H["Track 1: Shadow Policy Gradient"]
+        G --> I["Track 2: KL Distillation"]
+        H --> J["∇θ GRPO(π_shadow)"]
+        I --> K["λ · D_KL(π_dense ‖ π_shadow)"]
+        J --> L["Gradient Update ∇θ"]
+        K --> L
+    end
+
+    style ROLLOUT fill:#1a1a2e,stroke:#e94560,color:#fff
+    style INTERCEPT fill:#1a1a2e,stroke:#f5a623,color:#fff
+    style LEARNER fill:#1a1a2e,stroke:#00d2ff,color:#fff
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   SMD Training Loop                     │
-│                                                         │
-│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐   │
-│  │ Rollout  │───▶│ Shadow Mask  │───▶│   Learner    │   │
-│  │ (SGLang) │    │ Interceptor  │    │  (Megatron)  │   │
-│  └──────────┘    └──────────────┘    └──────┬───────┘   │
-│       │              Generates                │         │
-│       │           shadow_masks          ┌─────┴─────┐   │
-│       │              (T×T)              │ Dual-Track│   │
-│       │                                 │    Loss   │   │
-│       │                                 ├───────────┤   │
-│       │                                 │ Track 1:  │   │
-│       │                                 │ Shadow PG │   │
-│       │                                 │ (on-policy│   │
-│       │                                 │ faithful) │   │
-│       │                                 ├───────────┤   │
-│       │                                 │ Track 2:  │   │
-│       │                                 │ KL Distill│   │
-│       │                                 │ (dense →  │   │
-│       │                                 │  sparse)  │   │
-│       │                                 └───────────┘   │
-└─────────────────────────────────────────────────────────┘
 
-Total Loss = GRPO(π_shadow) + λ · D_KL(π_dense ‖ sg(π_shadow))
-```
+### Dual-Track Loss
 
-**Track 1 — Shadow Policy Gradient:** Restricts the GRPO gradient to tokens whose KV context was preserved by compression "on-policy faithful" tokens. This ensures the gradient signal is mathematically consistent with the compressed policy.
+$$\mathcal{L}_{\text{SMD}} = \underbrace{\mathcal{L}_{\text{GRPO}}(\pi_\theta \odot M)}_{\text{Track 1: Shadow PG}} + \underbrace{\lambda \cdot D_{\text{KL}}\!\left(\pi_\theta^{\text{dense}} \;\|\; \text{sg}(\pi_\theta^{\text{shadow}})\right)}_{\text{Track 2: KL Distillation}}$$
 
-**Track 2 — KL Distillation:** Aligns the full dense model's predictions with the compressed policy via KL divergence. This acts as a powerful regularizer that transfers knowledge from the sparse reasoning pathway to the full model.
+| Track | What it does | Why it matters |
+|:-----:|:-------------|:---------------|
+| **Track 1** | Restricts GRPO gradient to tokens whose KV context survived compression | Makes the gradient **on-policy faithful** — mathematically consistent with π_sparse |
+| **Track 2** | Aligns dense logits toward the compressed policy via KL divergence | Acts as a **regularizer** that transfers sparse reasoning patterns to the full model |
+
+> **Key insight:** SMD never physically evicts KV entries during rollout. The shadow mask only affects the *loss computation*, so rollout quality is preserved while the model learns to be robust to compression.
+
 
 ---
 
