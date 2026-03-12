@@ -26,6 +26,7 @@ Large Language Models require enormous GPU memory for their KV caches during inf
 | Qwen2.5-1.5B-Instruct | 1.5B | Transformer | ✅ Validated |
 | Qwen3-1.7B | 1.7B | Transformer | ✅ Validated |
 | Qwen3-4B-Instruct-2507 | 4B | Transformer | ✅ Validated |
+| Qwen3-8B-AWQ | 8B (INT4) | Transformer (AWQ) | ✅ Validated |
 
 ### Datasets
 | Dataset | Task | Avg Context | Reward Type |

@@ -44,5 +44,6 @@ shared_resources/models/
 ├── Qwen3-1.7B/
 ├── Qwen3-1.7B_torch_dist/
 ├── Qwen3-4B-Instruct-2507/
-└── Qwen3-4B-Instruct-2507_torch_dist/
+├── Qwen3-4B-Instruct-2507_torch_dist/
+└── Qwen3-8B-AWQ/              # INT4 quantized (AWQ), no torch_dist needed
 ```
