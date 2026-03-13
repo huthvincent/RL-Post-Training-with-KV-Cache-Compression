@@ -11,7 +11,8 @@ Large Language Models require enormous GPU memory for their KV caches during inf
 | Project | Status | Description |
 |---------|--------|-------------|
 | **[SMD](./SMD/)** | ✅ Active | Shadow Mask Distillation — Dual-track GRPO loss for KV-compressed RL |
-| **[Baselines](./baselines/)** | ✅ Active | 4 SOTA comparison methods (Sparse-RL, QuRL, RLHFless, R-KV) |
+| **[RL Baselines](./baselines/)** | ✅ Active | 3 SOTA RL training methods (Sparse-RL, QuRL, RLHFless) |
+| **[KV Compression](./baselines/kv_compression/)** | ✅ Active | 4 token selection strategies (SnapKV, R-KV, Random, Recent) |
 
 ## Roadmap
 
@@ -46,11 +47,15 @@ RLKV_github/
 │       ├── gsm8k/             #   Grade school math
 │       ├── gov_report/        #   Government report summarization
 │       └── hotpot_qa/         #   Multi-hop QA with distractors
-├── baselines/                 # SOTA comparison methods
-│   ├── sparse_rl.py           #   Rejection sampling + importance reweighting
-│   ├── qurl.py                #   Update-Aware Quantization + adaptive PPO clipping
-│   ├── rlhfless.py            #   Serverless elastic scheduling
-│   └── r_kv.py                #   Redundancy-aware KV eviction
+├── baselines/                 # Baseline methods & strategies
+│   ├── sparse_rl.py           #   RL baseline: rejection sampling + importance reweighting
+│   ├── qurl.py                #   RL baseline: Update-Aware Quantization + adaptive clipping
+│   ├── rlhfless.py            #   RL baseline: serverless elastic scheduling
+│   └── kv_compression/        #   KV cache compression strategies (pluggable)
+│       ├── snapkv.py           #     Attention-guided token selection
+│       ├── r_kv.py             #     Redundancy-aware joint scoring
+│       ├── random_eviction.py  #     Random selection baseline
+│       └── recent_eviction.py  #     Recent-token selection
 └── SMD/                       # Shadow Mask Distillation (our method)
     ├── src/                   # Core Python modules (shadow mask, losses, rewards)
     │   └── rewards/           # Unified reward functions for all datasets
