@@ -100,15 +100,22 @@ def get_per_key_importance(
         return None
 
     # Use the last layer's attention (most relevant for token selection)
-    attn = layers[-1]  # (B, H, S, S)
+    attn = layers[-1]  # Could be (H, S, S), (B, H, S, S), or (S, S)
+
+    # Normalize to 3D: (H, S, S)
+    if attn.dim() == 4:
+        attn = attn[0]  # Take first batch element → (H, S, S)
+    elif attn.dim() == 2:
+        attn = attn.unsqueeze(0)  # (S, S) → (1, S, S)
+    # Now attn is (H, S, S)
 
     # Take attention from the last num_recent_queries query positions
     seq_len = attn.shape[-1]
     start_q = max(0, seq_len - num_recent_queries)
-    recent_attn = attn[:, :, start_q:, :]  # (B, H, Q, S)
+    recent_attn = attn[:, start_q:, :]  # (H, Q, S)
 
-    # Sum attention received by each key, averaged across batch and heads
-    importance = recent_attn.mean(dim=(0, 1)).sum(dim=0)  # (S,)
+    # Sum attention received by each key, averaged across heads
+    importance = recent_attn.mean(dim=0).sum(dim=0)  # (S,)
 
     return importance.detach()
 
