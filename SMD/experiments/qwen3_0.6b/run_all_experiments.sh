@@ -74,7 +74,6 @@ for ds in $DATASETS; do
   run_one "exp02" "$ds" "sparse_rl"
   run_one "exp02" "$ds" "qurl"
   run_one "exp02" "$ds" "rlhfless"
-  run_one "exp02" "$ds" "r_kv"
 done
 
 echo "" | tee -a "${LOG_FILE}"

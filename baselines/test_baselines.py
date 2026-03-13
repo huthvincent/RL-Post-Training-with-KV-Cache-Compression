@@ -32,12 +32,14 @@ test("import baselines", lambda: __import__("baselines"))
 test("import sparse_rl", lambda: __import__("baselines.sparse_rl"))
 test("import qurl", lambda: __import__("baselines.qurl"))
 test("import rlhfless", lambda: __import__("baselines.rlhfless"))
-test("import r_kv", lambda: __import__("baselines.r_kv"))
+test("import kv_compression", lambda: __import__("baselines.kv_compression"))
+test("import kv_compression.r_kv", lambda: __import__("baselines.kv_compression.r_kv"))
+test("import kv_compression.snapkv", lambda: __import__("baselines.kv_compression.snapkv"))
 
 # ── Registry test ─────────────────────────────────────────────────────
 print("\n=== Registry ===")
 from baselines import BASELINE_REGISTRY
-test("registry has 4 methods", lambda: assert_(len(BASELINE_REGISTRY) == 4))
+test("registry has 3 RL methods", lambda: assert_(len(BASELINE_REGISTRY) == 3))
 test("all callables", lambda: assert_(all(callable(v) for v in BASELINE_REGISTRY.values())))
 
 # ── QuRL UAQ scaling ──────────────────────────────────────────────────
@@ -95,9 +97,9 @@ def test_cut_migrate():
 
 test("should_cut_and_migrate", test_cut_migrate)
 
-# ── R-KV compression engine ──────────────────────────────────────────
+# ── R-KV compression engine (now in kv_compression/) ─────────────────
 print("\n=== R-KV Compression Engine ===")
-from baselines.r_kv import RKVCacheCompressor
+from baselines.kv_compression.r_kv import RKVCacheCompressor
 
 def test_rkv_compressor():
     comp = RKVCacheCompressor(budget=32, buffer_size=16, alpha=4, beta=2, lam=0.1)

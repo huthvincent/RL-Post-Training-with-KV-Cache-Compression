@@ -285,7 +285,7 @@ def run_training(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GRPO Training for SMD Experiments")
     parser.add_argument("--dataset", required=True, choices=["tldr", "gsm8k", "govreport", "hotpotqa"])
-    parser.add_argument("--method", required=True, choices=["dense", "smd", "sparse_rl", "qurl", "rlhfless", "r_kv", "naive_snapkv", "naive_random"])
+    parser.add_argument("--method", required=True, choices=["dense", "smd", "sparse_rl", "qurl", "rlhfless", "naive_snapkv", "naive_random"])
     parser.add_argument("--num-rollouts", type=int, default=500)
     parser.add_argument("--lr", default="1e-7")
     parser.add_argument("--kl-coef", default="0.5")

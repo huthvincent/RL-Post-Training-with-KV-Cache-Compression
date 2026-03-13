@@ -36,7 +36,7 @@ for ds in $DATASETS; do
   run_one "exp01" "$ds" "naive_random"
 done
 
-# Exp 02: Dense + SMD + Sparse-RL + QuRL + RLHFless + R-KV × 4 datasets
+# Exp 02: Dense + SMD + Sparse-RL + QuRL + RLHFless × 4 datasets
 echo "--- EXP 02 ---"
 for ds in $DATASETS; do
   run_one "exp02" "$ds" "dense"
@@ -44,7 +44,6 @@ for ds in $DATASETS; do
   run_one "exp02" "$ds" "sparse_rl"
   run_one "exp02" "$ds" "qurl"
   run_one "exp02" "$ds" "rlhfless"
-  run_one "exp02" "$ds" "r_kv"
 done
 
 echo "=== All experiments complete! $(date) ==="
