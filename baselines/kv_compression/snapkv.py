@@ -74,9 +74,10 @@ class SnapKVSelector:
         # Sum attention received by each key position across all heads and queries
         importance = attention_scores[:, :, :prompt_length].sum(dim=(0, 1))  # (prompt_length,)
 
-        # Boost protected positions
-        importance[:self.sink_tokens] += importance.max() * 10
-        importance[-self.observation_window:] += importance.max() * 5
+        # Boost protected positions (save max before any boost to avoid pollution)
+        max_imp = importance.max().item()
+        importance[:self.sink_tokens] += max_imp * 10
+        importance[-self.observation_window:] += max_imp * 5
 
         _, top_indices = importance.topk(num_keep)
         return top_indices.sort().values

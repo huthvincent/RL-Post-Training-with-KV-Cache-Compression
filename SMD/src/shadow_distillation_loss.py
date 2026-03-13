@@ -226,9 +226,10 @@ def shadow_distillation_loss_function(
         dense_lp = torch.cat(log_probs, dim=0)
         shadow_target_lp = torch.cat(batch["rollout_log_probs"], dim=0).to(logits.device)
 
-        # Forward KL: D_KL(π_shadow || π_dense)
-        # = E_shadow[log π_shadow - log π_dense]
-        # Only penalize where dense probability is lower than shadow target
+        # One-sided distillation loss (not standard Forward KL):
+        # Penalizes only where dense probability < shadow target.
+        # This pushes the dense model to cover the shadow policy's
+        # high-probability tokens, without penalizing the reverse.
         kl_per_token = (shadow_target_lp - dense_lp).clamp(min=0)
         kl_distill_loss = sum_of_sample_mean(kl_per_token)
 

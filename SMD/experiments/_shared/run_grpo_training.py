@@ -28,7 +28,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
 
 # Add project to path
-sys.path.insert(0, "/workspace/RLKV")
+RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
+sys.path.insert(0, RLKV_ROOT)
 from SMD.src.rewards import compute_reward, REWARD_REGISTRY
 
 
@@ -36,7 +37,6 @@ from SMD.src.rewards import compute_reward, REWARD_REGISTRY
 # Configuration
 # ═══════════════════════════════════════════════════════════════
 
-RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
 MODEL_PATH = os.path.join(RLKV_ROOT, "shared_resources/models/Qwen3-0.6B")
 
 DATASET_CONFIGS = {
@@ -128,8 +128,14 @@ def generate_rollout(model, tokenizer, prompt_text, max_new_tokens, temperature=
 
 
 def compute_grpo_loss(model, tokenizer, prompt_inputs, responses, rewards, ref_model=None, 
-                      kl_coef=0.5, eps_clip=0.2, method="dense"):
-    """Compute GRPO loss with optional KL penalty."""
+                      kl_coef=0.5, eps_clip=0.2, method="dense",
+                      shadow_retention_ratio=0.5, shadow_strategy="snapkv",
+                      shadow_distill_lambda=0.1):
+    """Compute GRPO loss with optional shadow mask and KL distillation.
+
+    When method="smd", applies shadow mask to filter policy loss to
+    on-policy-faithful tokens and adds a KL distillation term.
+    """
     # Normalize rewards (GRPO advantage estimation)
     rewards_tensor = torch.tensor(rewards, dtype=torch.float32)
     if rewards_tensor.std() > 1e-8:
@@ -138,6 +144,7 @@ def compute_grpo_loss(model, tokenizer, prompt_inputs, responses, rewards, ref_m
         advantages = rewards_tensor - rewards_tensor.mean()
 
     total_loss = torch.tensor(0.0, device=model.device)
+    kl_distill_loss = torch.tensor(0.0, device=model.device)
     metrics = {"rewards": rewards, "advantages": advantages.tolist()}
 
     for i, (resp, adv) in enumerate(zip(responses, advantages)):
@@ -146,30 +153,54 @@ def compute_grpo_loss(model, tokenizer, prompt_inputs, responses, rewards, ref_m
             continue
 
         # Compute log probs under current policy
+        prompt_len = prompt_inputs["input_ids"].shape[1]
         full_ids = torch.cat([prompt_inputs["input_ids"][0], resp_ids]).unsqueeze(0)
         attention_mask = torch.ones_like(full_ids)
-        outputs = model(input_ids=full_ids, attention_mask=attention_mask)
-        logits = outputs.logits[0, prompt_inputs["input_ids"].shape[1]-1:-1]
+        outputs = model(input_ids=full_ids, attention_mask=attention_mask,
+                        output_attentions=(method == "smd"))
+        logits = outputs.logits[0, prompt_len - 1:-1]
         log_probs = torch.log_softmax(logits, dim=-1)
         token_log_probs = log_probs.gather(1, resp_ids.unsqueeze(1)).squeeze(1)
 
-        # Policy gradient with advantage
-        policy_loss = -(token_log_probs * adv.to(model.device)).mean()
+        # === Shadow Mask Filtering (SMD only) ===
+        token_weight = torch.ones_like(token_log_probs)
+        if method == "smd" and outputs.attentions is not None:
+            # Use last layer attention to compute shadow mask
+            attn = outputs.attentions[-1]  # (1, H, S, S)
+            shadow_mask = compute_shadow_mask(attn, shadow_strategy, shadow_retention_ratio)
+            # shadow_mask: (1, S) — True = kept positions
+            # For response tokens: check how many prompt KVs they can see
+            resp_visibility = shadow_mask[0, :prompt_len].float().sum() / prompt_len
+            # Weight response tokens by how "compressed" their view is
+            if resp_visibility < 1.0:
+                token_weight = token_weight * resp_visibility
+
+        # Policy gradient with advantage (weighted by shadow mask)
+        policy_loss = -(token_log_probs * token_weight.detach() * adv.to(model.device)).mean()
 
         # KL penalty (if ref model available)
         kl_loss = torch.tensor(0.0, device=model.device)
         if ref_model is not None and kl_coef > 0:
             with torch.no_grad():
                 ref_outputs = ref_model(input_ids=full_ids, attention_mask=attention_mask)
-                ref_logits = ref_outputs.logits[0, prompt_inputs["input_ids"].shape[1]-1:-1]
+                ref_logits = ref_outputs.logits[0, prompt_len - 1:-1]
                 ref_log_probs = torch.log_softmax(ref_logits, dim=-1)
                 ref_token_log_probs = ref_log_probs.gather(1, resp_ids.unsqueeze(1)).squeeze(1)
             kl = (token_log_probs - ref_token_log_probs).mean()
             kl_loss = kl_coef * kl
 
+        # KL distillation (SMD Track-2: dense → shadow alignment)
+        if method == "smd" and ref_model is not None and shadow_distill_lambda > 0:
+            with torch.no_grad():
+                ref_token_lp = ref_log_probs.gather(1, resp_ids.unsqueeze(1)).squeeze(1) \
+                    if 'ref_log_probs' in dir() else torch.zeros_like(token_log_probs)
+            kl_distill = (ref_token_lp - token_log_probs).clamp(min=0).mean()
+            kl_distill_loss = kl_distill_loss + shadow_distill_lambda * kl_distill
+
         total_loss = total_loss + policy_loss + kl_loss
 
-    total_loss = total_loss / max(len(responses), 1)
+    total_loss = (total_loss + kl_distill_loss) / max(len(responses), 1)
+    metrics["kl_distill_loss"] = kl_distill_loss.item()
     return total_loss, metrics
 
 

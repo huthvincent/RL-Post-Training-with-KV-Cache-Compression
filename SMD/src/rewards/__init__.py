@@ -43,7 +43,7 @@ def compute_rouge_reward(response: str, label: str) -> float:
     length_excess = max(0, word_count - TLDR_MAX_WORDS)
     length_penalty = TLDR_LENGTH_PENALTY_LAMBDA * length_excess / TLDR_MAX_WORDS
 
-    return rouge_l_f1 - length_penalty
+    return max(0.0, rouge_l_f1 - length_penalty)
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -28,7 +28,8 @@ import numpy as np
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-sys.path.insert(0, "/workspace/RLKV")
+RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
+sys.path.insert(0, RLKV_ROOT)
 from SMD.src.rewards import compute_reward
 
 
@@ -36,7 +37,6 @@ from SMD.src.rewards import compute_reward
 # Configuration
 # ═══════════════════════════════════════════════════════════════
 
-RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
 MODEL_PATH = os.path.join(RLKV_ROOT, "shared_resources/models/Qwen3-1.7B")
 DATA_FILE  = os.path.join(RLKV_ROOT, "shared_resources/datasets/tldr/train.jsonl")
 RM_TYPE    = "rouge"
@@ -136,11 +136,17 @@ def generate_with_kv_compression(model, tokenizer, prompt_text, max_new_tokens,
                                   strategy=None, retention_ratio=0.5, n_samples=2):
     """Generate responses, optionally with true physical KV cache compression.
     
-    For naive KV compression, we simulate physical eviction by keeping only
-    the retained prompt tokens as input. This is equivalent to physically
-    evicting KV entries because position embeddings and attention patterns
-    are recomputed from scratch with only the retained tokens.
+    For naive KV compression, we do a proper prefill → physical KV slice → generation:
+    1. Full prefill with all prompt tokens (correct position embeddings)
+    2. Physically slice the KV cache to retain only selected positions
+    3. Continue generation with the compressed KV cache
+    
+    This preserves the original position embeddings in the retained KV entries,
+    which is the correct simulation of KV cache eviction (as opposed to
+    re-concatenating tokens, which would destroy position information).
     """
+    from transformers.cache_utils import DynamicCache
+
     chat_prompt = tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt_text}],
         tokenize=False, add_generation_prompt=True
@@ -160,25 +166,60 @@ def generate_with_kv_compression(model, tokenizer, prompt_text, max_new_tokens,
                 )
                 response_ids = output[0][prompt_len:]
             else:
-                # Naive KV compression: keep only retained prompt tokens
-                # This simulates physical KV eviction — the model only sees
-                # the retained positions, making position embeddings and
-                # attention patterns consistent with the compressed cache.
+                # True KV eviction: prefill → physical KV cache slicing → generation
+                # Step 1: Full prefill (correct position embeddings for ALL tokens)
+                prefill_out = model(input_ids=inputs["input_ids"], use_cache=True)
+                past_kv = prefill_out.past_key_values
+                
+                # Step 2: Select which KV positions to keep
                 keep_indices = select_kv_indices(strategy, prompt_len, retention_ratio)
                 keep_tensor = torch.tensor(keep_indices, device=model.device)
                 
-                # Build compressed input: retained prompt tokens only
-                compressed_input_ids = inputs["input_ids"][0][keep_tensor].unsqueeze(0)
-                compressed_attn_mask = torch.ones_like(compressed_input_ids)
+                # Step 3: Physically slice the KV cache (position embeddings preserved!)
+                if hasattr(past_kv, 'to_legacy_cache'):
+                    legacy = past_kv.to_legacy_cache()
+                    new_legacy = []
+                    for k, v in legacy:
+                        new_legacy.append((k[:, :, keep_tensor, :], v[:, :, keep_tensor, :]))
+                    past_kv = DynamicCache.from_legacy_cache(tuple(new_legacy))
+                else:
+                    # Fallback for tuple-based cache
+                    new_kv = []
+                    for k, v in past_kv:
+                        new_kv.append((k[:, :, keep_tensor, :], v[:, :, keep_tensor, :]))
+                    past_kv = tuple(new_kv)
                 
-                output = model.generate(
-                    input_ids=compressed_input_ids,
-                    attention_mask=compressed_attn_mask,
-                    max_new_tokens=max_new_tokens,
-                    temperature=1.0, do_sample=True, top_p=0.95,
-                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
-                )
-                response_ids = output[0][compressed_input_ids.shape[1]:]
+                # Step 4: Sample first token from prefill logits
+                next_logits = prefill_out.logits[:, -1, :]
+                probs = torch.softmax(next_logits / 1.0, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+                
+                generated = [next_token[0, 0].item()]
+                eos_id = tokenizer.eos_token_id
+                
+                # Step 5: Autoregressive generation with compressed KV
+                for step_i in range(max_new_tokens - 1):
+                    if generated[-1] == eos_id:
+                        break
+                    cur_pos = len(keep_indices) + len(generated) - 1
+                    position_ids = torch.tensor([[cur_pos]], device=model.device)
+                    kv_len = keep_tensor.shape[0] + len(generated) - 1
+                    att_mask = torch.ones((1, kv_len + 1), device=model.device, dtype=torch.long)
+                    
+                    out = model(
+                        input_ids=next_token,
+                        past_key_values=past_kv,
+                        use_cache=True,
+                        position_ids=position_ids,
+                        attention_mask=att_mask,
+                    )
+                    past_kv = out.past_key_values
+                    next_logits = out.logits[:, -1, :]
+                    probs = torch.softmax(next_logits / 1.0, dim=-1)
+                    next_token = torch.multinomial(probs, num_samples=1)
+                    generated.append(next_token[0, 0].item())
+                
+                response_ids = torch.tensor(generated, device=model.device)
             
             response_text = tokenizer.decode(response_ids, skip_special_tokens=True)
             responses.append({"text": response_text, "ids": response_ids})
