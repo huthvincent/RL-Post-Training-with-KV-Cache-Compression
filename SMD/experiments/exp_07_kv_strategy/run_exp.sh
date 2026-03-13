@@ -9,7 +9,7 @@
 # ==========================================
 
 # ── Configuration (Modify here for scale-up) ───────────────────────────
-MODEL_SIZE="1.5B"
+MODEL_SIZE="1.7B"
 MODEL_PATH="/home/zhu11/RLKV/RLKV_github/shared_resources/models"
 DATA_PATH="/home/zhu11/RLKV/RLKV_github/shared_resources/datasets/tldr_train.jsonl"
 CONTAINER="slime_shadow"

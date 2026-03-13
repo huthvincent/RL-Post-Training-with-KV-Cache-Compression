@@ -19,8 +19,8 @@ run_sglang_experiment() {
   mkdir -p "${exp_dir}"
   echo "$(date '+%Y-%m-%d %H:%M:%S') [START] ${name}" | tee -a "${RESULTS_DIR}/run.log"
 
-  local hf_ckpt="${MODEL_PATH}/Qwen2.5-${MODEL_SIZE}-Instruct"
-  local td_ckpt="${MODEL_PATH}/Qwen2.5-${MODEL_SIZE}-Instruct_torch_dist"
+  local hf_ckpt="${MODEL_PATH}/Qwen3-${MODEL_SIZE}"
+  local td_ckpt="${MODEL_PATH}/Qwen3-${MODEL_SIZE}_torch_dist"
 
   docker exec "${CONTAINER}" bash -c "
     set -e
@@ -36,7 +36,7 @@ run_sglang_experiment() {
     ray start --head --num-gpus 1 --disable-usage-stats 2>&1 | tail -5
     sleep 8
 
-    source /root/slime/scripts/models/qwen2.5-${MODEL_SIZE}.sh
+    source /root/slime/scripts/models/qwen3-${MODEL_SIZE}.sh
     MODEL_ARGS+=(--rotary-base 1000000)
 
     python3 /root/slime/train.py \\

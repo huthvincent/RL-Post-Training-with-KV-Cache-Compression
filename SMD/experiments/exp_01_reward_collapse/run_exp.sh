@@ -14,7 +14,7 @@
 # ==========================================
 
 # ── Configuration (Modify here for scale-up) ───────────────────────────
-MODEL_SIZE="1.5B"                                                       # Change to 7B/14B
+MODEL_SIZE="1.7B"                                                       # Change to 4B/8B
 MODEL_PATH="/home/zhu11/RLKV/RLKV_github/shared_resources/models"      # HF model root
 DATA_PATH_TLDR="/home/zhu11/RLKV/RLKV_github/shared_resources/datasets/tldr_train.jsonl"
 DATA_PATH_GSM8K="/home/zhu11/RLKV/RLKV_github/shared_resources/datasets/gsm8k_fewshot_train.jsonl"
@@ -45,8 +45,8 @@ run_naive_experiment() {
   mkdir -p "${exp_dir}"
   echo "$(date '+%Y-%m-%d %H:%M:%S') [START] ${name}" | tee -a "${RESULTS_DIR}/run.log"
 
-  local hf_ckpt="${MODEL_PATH}/Qwen2.5-${MODEL_SIZE}-Instruct"
-  local td_ckpt="${MODEL_PATH}/Qwen2.5-${MODEL_SIZE}-Instruct_torch_dist"
+  local hf_ckpt="${MODEL_PATH}/Qwen3-${MODEL_SIZE}"
+  local td_ckpt="${MODEL_PATH}/Qwen3-${MODEL_SIZE}_torch_dist"
 
   local shadow_args="--use-shadow-mask --shadow-retention-ratio ${ratio} --shadow-strategy ${strategy}"
 
@@ -63,7 +63,7 @@ run_naive_experiment() {
     ray start --head --node-ip-address \${MASTER_ADDR} --num-gpus 1 --disable-usage-stats 2>&1 | tail -3
     sleep 5
 
-    source /root/slime/scripts/models/qwen2.5-${MODEL_SIZE}.sh
+    source /root/slime/scripts/models/qwen3-${MODEL_SIZE}.sh
     MODEL_ARGS+=(--rotary-base 1000000)
 
     python3 /root/slime/train.py \\
