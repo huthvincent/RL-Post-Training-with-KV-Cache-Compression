@@ -32,6 +32,8 @@ def compute_rouge_reward(response: str, label: str) -> float:
 
     if not response or not response.strip():
         return 0.0
+    if not label or not label.strip():
+        return 0.0
 
     scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
     scores = scorer.score(label.strip(), response.strip())
@@ -57,6 +59,8 @@ def compute_govreport_reward(response: str, label: str) -> float:
     from rouge_score import rouge_scorer
 
     if not response or not response.strip():
+        return 0.0
+    if not label or not label.strip():
         return 0.0
 
     scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)

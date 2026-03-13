@@ -36,8 +36,9 @@ from SMD.src.rewards import compute_reward
 # Configuration
 # ═══════════════════════════════════════════════════════════════
 
-MODEL_PATH = "/workspace/RLKV/shared_resources/models/Qwen3-1.7B"
-DATA_FILE  = "/workspace/RLKV/shared_resources/datasets/tldr/train.jsonl"
+RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
+MODEL_PATH = os.path.join(RLKV_ROOT, "shared_resources/models/Qwen3-1.7B")
+DATA_FILE  = os.path.join(RLKV_ROOT, "shared_resources/datasets/tldr/train.jsonl")
 RM_TYPE    = "rouge"
 MAX_RESP_LEN = 128
 
@@ -310,4 +311,8 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     stdlib_random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     run_training(args)

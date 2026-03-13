@@ -36,13 +36,14 @@ from SMD.src.rewards import compute_reward, REWARD_REGISTRY
 # Configuration
 # ═══════════════════════════════════════════════════════════════
 
-MODEL_PATH = "/workspace/RLKV/shared_resources/models/Qwen3-0.6B"
+RLKV_ROOT = os.environ.get("RLKV_ROOT", "/workspace/RLKV")
+MODEL_PATH = os.path.join(RLKV_ROOT, "shared_resources/models/Qwen3-0.6B")
 
 DATASET_CONFIGS = {
-    "tldr":      {"rm_type": "rouge",    "max_resp_len": 128, "data_file": "/workspace/RLKV/shared_resources/datasets/tldr/train.jsonl"},
-    "gsm8k":     {"rm_type": "math",     "max_resp_len": 256, "data_file": "/workspace/RLKV/shared_resources/datasets/gsm8k/train.jsonl"},
-    "govreport": {"rm_type": "govreport","max_resp_len": 512, "data_file": "/workspace/RLKV/shared_resources/datasets/gov_report/train.jsonl"},
-    "hotpotqa":  {"rm_type": "hotpotqa", "max_resp_len": 256, "data_file": "/workspace/RLKV/shared_resources/datasets/hotpot_qa/train.jsonl"},
+    "tldr":      {"rm_type": "rouge",    "max_resp_len": 128, "data_file": os.path.join(RLKV_ROOT, "shared_resources/datasets/tldr/train.jsonl")},
+    "gsm8k":     {"rm_type": "math",     "max_resp_len": 256, "data_file": os.path.join(RLKV_ROOT, "shared_resources/datasets/gsm8k/train.jsonl")},
+    "govreport": {"rm_type": "govreport","max_resp_len": 512, "data_file": os.path.join(RLKV_ROOT, "shared_resources/datasets/gov_report/train.jsonl")},
+    "hotpotqa":  {"rm_type": "hotpotqa", "max_resp_len": 256, "data_file": os.path.join(RLKV_ROOT, "shared_resources/datasets/hotpot_qa/train.jsonl")},
 }
 
 
@@ -297,5 +298,9 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     run_training(args)

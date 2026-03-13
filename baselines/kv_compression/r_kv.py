@@ -243,6 +243,7 @@ class RKVCacheCompressor:
         """
         num_keys = key_states.shape[0]
         device = key_states.device
+        attn_weights = attn_weights.to(device)
 
         if num_keys <= self.budget:
             return torch.arange(num_keys, device=device)

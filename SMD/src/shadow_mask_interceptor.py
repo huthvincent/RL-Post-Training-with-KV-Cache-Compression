@@ -173,6 +173,10 @@ class ShadowMaskInterceptor:
         if num_keep >= prompt_length:
             return torch.arange(prompt_length)
 
+        # Guard against empty prompt
+        if prompt_length == 0:
+            return torch.tensor([], dtype=torch.long)
+
         if config.strategy == "recent":
             # Keep sink tokens + most recent tokens
             sink = torch.arange(min(config.sink_tokens, prompt_length))
@@ -259,8 +263,18 @@ class ShadowMaskInterceptor:
         config = self.config
 
         if attention_scores.dim() == 1:
-            # Pre-aggregated importance scores
-            importance = attention_scores[:prompt_length].float().clone()
+            # Pre-aggregated importance scores (with padding if needed)
+            if attention_scores.shape[0] < prompt_length:
+                logger.warning(
+                    f"Attention scores length ({attention_scores.shape[0]}) < "
+                    f"prompt_length ({prompt_length}), padding with zeros"
+                )
+                padded = torch.zeros(prompt_length, dtype=attention_scores.dtype,
+                                     device=attention_scores.device)
+                padded[:attention_scores.shape[0]] = attention_scores
+                importance = padded.float()
+            else:
+                importance = attention_scores[:prompt_length].float().clone()
         elif attention_scores.dim() == 3:
             # Raw attention weights: (H, S, S)
             # Use last observation_window queries to score keys (SnapKV paper)

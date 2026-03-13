@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ── Global attention buffer ─────────────────────────────────────────────
 _ATTENTION_BUFFER: OrderedDict[int, torch.Tensor] = OrderedDict()
 _HOOKS_REGISTERED = False
+MAX_BUFFER_LAYERS = 128  # Prevent memory leak in long training runs
 
 
 def clear_attention_buffer():
@@ -102,6 +103,10 @@ def get_per_key_importance(
     # Use the last layer's attention (most relevant for token selection)
     attn = layers[-1]  # Could be (H, S, S), (B, H, S, S), or (S, S)
 
+    # Guard against empty tensor (Issue #6)
+    if attn is None or attn.numel() == 0:
+        return None
+
     # Normalize to 3D: (H, S, S)
     if attn.dim() == 4:
         attn = attn[0]  # Take first batch element → (H, S, S)
@@ -126,13 +131,10 @@ def _make_attention_hook(layer_idx: int):
     """Create a forward hook that captures attention weights for a specific layer."""
 
     def hook_fn(module, args, output):
-        # Megatron's SelfAttention / CoreAttention stores attention probs
-        # during forward. We look for the attention weights in the output
-        # or in saved tensors on the module.
-        #
-        # Strategy: Check if the module has attention_probs attribute
-        # (set by Megatron's CoreAttention when not using FlashAttention).
-        # If not available, we try to reconstruct from QKV.
+        # Limit buffer size to prevent memory leak (Issue #8)
+        if len(_ATTENTION_BUFFER) >= MAX_BUFFER_LAYERS:
+            _ATTENTION_BUFFER.popitem(last=False)  # Remove oldest
+
         if hasattr(module, "attention_probs") and module.attention_probs is not None:
             _ATTENTION_BUFFER[layer_idx] = module.attention_probs.detach()
         elif hasattr(module, "attn_weights") and module.attn_weights is not None:

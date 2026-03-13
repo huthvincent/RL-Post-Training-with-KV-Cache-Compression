@@ -100,8 +100,3 @@ if passed == total:
 else:
     print("⚠️  Some tests failed!")
     sys.exit(1)
-
-
-def assert_(cond):
-    if not cond:
-        raise AssertionError("Assertion failed")

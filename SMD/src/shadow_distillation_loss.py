@@ -108,8 +108,8 @@ def shadow_distillation_loss_function(
             batch["shadow_masks"] = new_masks  # 更新 batch 供后续使用
             logger.info("Shadow masks upgraded with real SnapKV attention")
     except ImportError:
-        pass  # attention_extraction 不可用，使用原始 position-based masks
-    except Exception as e:
+        logger.debug("attention_extraction module not available, using position-based masks")
+    except (RuntimeError, ValueError, IndexError) as e:
         logger.warning(f"Failed to regenerate shadow masks with real attention: {e}")
 
     # === Track-1: Shadow-masked on-policy loss ===
@@ -161,12 +161,14 @@ def shadow_distillation_loss_function(
         prompt_len = total_len - resp_len
 
         # 对 response 区域：每行的 True 比率
+        # 只有在压缩后生成的 token（可见度 ≈ retention_ratio）才是 on-policy faithful
+        retention_ratio = getattr(args, "shadow_retention_ratio", 0.5)
         if sm.shape[0] >= total_len:
             resp_mask = sm[prompt_len:total_len, :total_len]  # (resp_len, total_len)
             visibility_ratio = resp_mask.float().sum(dim=-1) / total_len
-            # 如果 visibility_ratio < 1.0, 说明有 KV 被压缩，token 在稀疏条件下生成
+            # Token 在稀疏条件下生成 = 可见度显著低于 100%
             shadow_token_masks.append(
-                (visibility_ratio < 1.0).to(logits.device)
+                (visibility_ratio <= retention_ratio + 0.05).to(logits.device)
             )
         else:
             shadow_token_masks.append(
@@ -224,9 +226,10 @@ def shadow_distillation_loss_function(
         dense_lp = torch.cat(log_probs, dim=0)
         shadow_target_lp = torch.cat(batch["rollout_log_probs"], dim=0).to(logits.device)
 
-        # Forward KL: D_KL(shadow || dense) ≈ shadow_target * (shadow_target - dense)
-        # 这里用 token-level 的 log_prob 差异的绝对值作为近似蒸馏信号
-        kl_per_token = (dense_lp - shadow_target_lp).abs()
+        # Forward KL: D_KL(π_shadow || π_dense)
+        # = E_shadow[log π_shadow - log π_dense]
+        # Only penalize where dense probability is lower than shadow target
+        kl_per_token = (shadow_target_lp - dense_lp).clamp(min=0)
         kl_distill_loss = sum_of_sample_mean(kl_per_token)
 
     # === 总 Loss ===
