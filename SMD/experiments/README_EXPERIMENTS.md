@@ -1,56 +1,95 @@
-# Experiment Scripts
+# SMD Experiment Matrix
 
-This directory contains all 7 reproducible experiments for the SMD paper.
+> **Model**: Qwen3-1.7B  |  **Datasets**: TL;DR (ROUGE-L), GSM8K (Exact Match)
 
-## Experiment Map
+---
 
-| Directory | Purpose | Dataset | Key Variable |
-|-----------|---------|---------|-------------|
-| `exp_01_reward_collapse` | Naive KV collapse (motivating failure) | TL;DR + GSM8K | Compression method |
-| `exp_02_sota_showdown` | SMD vs Sparse-RL vs Dense | TL;DR | Loss function |
-| `exp_03_downstream_eval` | Downstream generalization | GSM8K | Training method |
-| `exp_04_vram_spike_profiling` | VRAM spike measurement | TL;DR | Compression on/off |
-| `exp_05_compression_ratio` | Retention ratio ablation | TL;DR | ratio ∈ {0.25, 0.5, 0.75, 1.0} |
-| `exp_06_distillation_lambda` | Distillation weight ablation | TL;DR | λ ∈ {0, 0.1, 1.0} |
-| `exp_07_kv_strategy` | Token selection strategy | TL;DR | strategy ∈ {snapkv, random, recent} |
+## Overview
 
-## For Collaborators: How to Scale Up
+| #  | Experiment | Question | Key Variables |
+|----|-----------|----------|---------------|
+| 1  | **Naive KV Collapse** | Why does naive KV compression break RL? | Dense vs 4× naive KV strategies |
+| 2  | **SOTA Showdown** | Is SMD better than other corrections? | SMD vs Sparse-RL vs RLHFless vs Dense |
+| 3  | **Downstream Generalization** | Does SMD preserve downstream accuracy? | GSM8K train → test eval |
+| 5  | **Compression Ratio** | How much can we compress? | R-KV retention = {25%, 50%, 75%, 100%} |
+| 6  | **Distillation Lambda** | How much KL distillation? | λ = {0, 0.1, 0.5, 1.0} |
+| 7  | **KV Strategy** | Which compression strategy is best? | R-KV vs SnapKV vs Random vs Recent |
+| 8  | **Quant vs KV Compression** | Which mismatch is more severe? | QuRL (INT8) vs SMD (R-KV 50%) |
+| 9  | **PPO vs GRPO for SMD** | Does advantage estimation method matter? | PPO (critic) vs GRPO (group-relative) |
+| 10 | **Stability** | Is training reproducible? | 5 seeds × {Dense, SMD}, mean ± std |
 
-Each `run_exp.sh` has a clearly marked **Configuration** section at the top:
+> **Note**: Exp 4 was removed (former VRAM spike profiling, not relevant to final paper).
 
-```bash
-# ── Configuration (Modify here for scale-up) ───────────────────────────
-MODEL_SIZE="1.5B"        # ← Change to "7B" or "14B"
-MODEL_PATH="..."         # ← Point to your model weights
-DATA_PATH="..."          # ← Point to your dataset
-CONTAINER="slime_shadow" # ← Your Docker container name
-MAX_ROLLOUTS=500         # ← Increase for longer training
-BATCH_SIZE=2             # ← Increase with more GPUs
+---
+
+## Directory Structure
+
+```
+experiments/
+├── _shared/                    # Shared helper scripts
+│   └── run_helper.sh
+├── exp_01_reward_collapse/     # Exp 1: Naive KV → collapse
+│   ├── run_exp.sh              # Slime/Megatron version
+│   ├── run_exp01.py            # Standalone HuggingFace version
+│   └── run_exp01.sh
+├── exp_02_sota_showdown/       # Exp 2: SMD vs competitors
+│   └── run_exp.sh
+├── exp_03_downstream_eval/     # Exp 3: GSM8K generalization
+│   └── run_exp.sh
+├── exp_05_compression_ratio/   # Exp 5: retention ratio sweep
+│   └── run_exp.sh
+├── exp_06_distillation_lambda/ # Exp 6: λ sweep
+│   └── run_exp.sh
+├── exp_07_kv_strategy/         # Exp 7: compression strategy
+│   └── run_exp.sh
+├── exp_08_quant_vs_kv/         # Exp 8: quantization vs KV
+│   └── run_exp.sh
+├── exp_09_ppo_vs_grpo/         # Exp 9: advantage method
+│   └── run_exp.sh
+├── exp_10_stability/           # Exp 10: multi-seed stability
+│   ├── run_stability.py        # Python: 5 seeds + report
+│   └── run_exp.sh
+└── qwen3_0.6b/                 # Standalone 0.6B experiments
+    ├── run_grpo_training.py
+    └── run_all_experiments.sh
 ```
 
-### To run on a 7B model:
-1. Download `Qwen2.5-7B-Instruct` weights
-2. Convert to Megatron format with `tools/convert_hf_to_torch_dist.py`
-3. Edit `MODEL_SIZE="7B"` and update `MODEL_PATH`
-4. Increase `BATCH_SIZE` if you have multiple GPUs
+---
 
-### Multi-GPU scaling:
-For TP=2 or TP=4, also update `--tensor-model-parallel-size` in `_shared/run_helper.sh`.
+## How to Run
 
-## Running Experiments
+### Slime/Megatron (inside Docker `slime_shadow`)
 
 ```bash
-# Run a single experiment
-bash experiments/exp_02_sota_showdown/run_exp.sh
-
-# Run all experiments sequentially
-for exp in exp_0{1..7}_*; do
-  bash experiments/$exp/run_exp.sh
-done
+docker exec slime_shadow bash -c "
+  cd /home/zhu11/RLKV/RLKV_github/SMD/experiments/exp_01_reward_collapse
+  bash run_exp.sh
+"
 ```
 
-## Dependencies
-- Docker container with Slime + Megatron-LM installed
-- NVIDIA GPU with ≥ 40GB VRAM (for 1.5B model)
-- Model weights in `shared_resources/models/`
-- Datasets in `shared_resources/datasets/`
+### Standalone HuggingFace (Exp 1, 10)
+
+```bash
+docker exec slime_shadow bash -c "
+  export RLKV_ROOT=/home/zhu11/RLKV/RLKV_github
+  export PYTHONPATH=\$RLKV_ROOT:\$PYTHONPATH
+  python \$RLKV_ROOT/SMD/experiments/exp_10_stability/run_stability.py \
+    --output-dir /workspace/results/exp10 --method smd
+"
+```
+
+---
+
+## Exp 10: Stability Test Details
+
+Runs the same configuration with **5 random seeds** (42, 123, 456, 789, 2026) and reports:
+
+| Metric | Formula |
+|--------|---------|
+| Reward (last 50) | `mean(avg_reward[-50:])` across seeds |
+| Std | `std(avg_reward[-50:])` across seeds |
+| Range | `[min, max]` across seeds |
+
+**Output**: `stability_report.json` with per-seed and aggregated statistics.
+
+Supports `--report-only` to regenerate report from existing results.
