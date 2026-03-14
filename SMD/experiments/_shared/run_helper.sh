@@ -28,6 +28,7 @@ run_sglang_experiment() {
     export CUDA_DEVICE_MAX_CONNECTIONS=1
     export PYTHONPATH=/root/Megatron-LM:\${PYTHONPATH:-}
     export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+    export RAY_ADDRESS=auto
 
     ray stop --force 2>/dev/null || true
     sleep 3
